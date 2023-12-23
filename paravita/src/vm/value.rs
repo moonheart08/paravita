@@ -1,4 +1,4 @@
-use core::{fmt::Debug, mem::{size_of, align_of, MaybeUninit}, any::TypeId};
+use core::{fmt::Debug, mem::{size_of, align_of, MaybeUninit, discriminant}, any::TypeId};
 
 use bytemuck::Pod;
 use bytemuck_derive::{Pod, Zeroable};
@@ -7,9 +7,9 @@ use super::{PVObject, PrimOpKind};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
+    Null,
     Int(PrimOpKind, Aligned), // Due to both BE and LE platforms, and non-64bit using this type, just upcasting to u64 isn't acceptable as it'd imply the need to extend or sign extend all numeric values.
     Object(PVObject),
-    Null,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -41,6 +41,10 @@ impl Value {
         }
         //SAFETY: Minor UB, may leak parts of stack. But safe as far as I'm concerned :^)
         return Value::Int(k, unsafe { a.assume_init() });
+    }
+
+    pub fn is_null(&self) -> bool {
+        discriminant(self) == discriminant(&Value::Null)
     }
 }
 
@@ -95,14 +99,5 @@ impl From<u8> for Value {
 impl From<i8> for Value {
     fn from(value: i8) -> Self {
         Value::from(value, PrimOpKind::I8)
-    }
-}
-
-
-impl Drop for Value {
-    // this is massive when inlined, don't. llvm ur stinky
-    #[inline(never)]
-    fn drop(&mut self) {
-        let _ = self;
     }
 }

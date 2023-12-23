@@ -5,6 +5,7 @@ mod opcodes;
 mod value;
 use core::any::TypeId;
 use core::cell::{Ref, RefMut};
+use core::mem::discriminant;
 use core::net::Ipv6Addr;
 use core::ops::DerefMut;
 use core::{alloc::AllocError, ops::Deref};
@@ -48,35 +49,32 @@ impl Process {
         })
     }
 
-    #[inline(never)]
-    #[must_use]
-    pub(super) fn pop(&mut self) -> VmResult<Value> {
-        self.stack.pop().ok_or(VmError::StackUnderflow())
-    }
-
-    
-    #[inline(never)]
     #[must_use]
     pub(super) fn pop_into(&mut self, into: &mut Value) -> VmResult<()> {
-        *into = self.stack.pop().ok_or(VmError::StackUnderflow())?;
+        if !into.is_null() {
+            //We'd need to drop it. No.
+            unimplemented!()
+        }
+        if self.stack.len() == 0 {
+            return Err(VmError::StackUnderflow())
+        }
+
+        unsafe {
+            let len = self.stack.len()-1;
+            let src = self.stack.get_unchecked_mut(len) as *const Value;
+            let dest = into as *mut Value;
+            dest.copy_from(src, 1);
+            self.stack.set_len(len);
+        }
         Ok(())
     }
 
-    #[inline(never)]
-    pub(super) unsafe fn pop_unchecked(&mut self) -> Value {
+    pub(super) unsafe fn pop_into_unchecked(&mut self, into: *mut Value) {
         let len = self.stack.len()-1;
-        let v = core::mem::take(self.stack.get_unchecked_mut(len));
+        let src = self.stack.get_unchecked_mut(len) as *const Value;
+        let dest = into as *mut Value;
+        dest.copy_from(src, 1);
         self.stack.set_len(len);
-        return v;
-    }
-
-    #[must_use]
-    pub(super) fn pop2(&mut self) -> VmResult<(Value, Value)> {
-        if self.stack.len() < 2 {
-            return Err(VmError::StackUnderflow());
-        }
-
-        unsafe { Ok((self.pop_unchecked(), self.pop_unchecked())) }
     }
 
     #[must_use]
@@ -85,17 +83,35 @@ impl Process {
             return Err(VmError::StackUnderflow());
         }
 
+        if !x.is_null() || !y.is_null() {
+            //We'd need to drop it. No.
+            unimplemented!()
+        }
+
         unsafe {
-            *x = self.pop_unchecked();
-            *y = self.pop_unchecked();
+            self.pop_into_unchecked(x as *mut Value);
+            self.pop_into_unchecked(y as *mut Value);
         }
         Ok(())
     }
 
-
     #[must_use]
-    pub(super) fn pop3(&mut self) -> VmResult<(Value, Value, Value)> {
-        Ok((self.pop()?, self.pop()?, self.pop()?))
+    pub(super) fn pop3_into(&mut self, x: &mut Value, y: &mut Value, z: &mut Value) -> VmResult<()> {
+        if self.stack.len() < 3 {
+            return Err(VmError::StackUnderflow());
+        }
+
+        if !x.is_null() || !y.is_null() || !z.is_null() {
+            //We'd need to drop it. No.
+            unimplemented!()
+        }
+
+        unsafe {
+            self.pop_into_unchecked(x as *mut Value);
+            self.pop_into_unchecked(y as *mut Value);
+            self.pop_into_unchecked(z as *mut Value);
+        }
+        Ok(())
     }
 
     pub(super) fn push(&mut self, v: Value) {
@@ -243,13 +259,18 @@ impl Process {
                 self.push(arr.deref().load(idx).unwrap_or(Value::Null));
             }
             Operation::SetArray => {
-                let (arr, idx, value) = self.pop3()?;
+                let mut arr = Value::Null;
+                let mut idx = Value::Null;
+                let mut value = Value::Null;
+                self.pop3_into(&mut arr, &mut idx, &mut value)?;
                 let idx = Self::as_num::<usize>(&idx)?;
                 let mut arr = Self::as_list_mut(&arr)?;
                 arr.deref_mut().store(idx, value)?;
             }
             Operation::Drop => {
-                core::mem::drop(self.pop());
+                let mut x = Value::Null;
+                self.pop_into(&mut x)?;
+                core::mem::drop(x);
             }
             Operation::Dup => {
                 let mut x = Value::Null;
@@ -258,7 +279,9 @@ impl Process {
                 self.push(x)
             }
             Operation::Swap => {
-                let (x, y) = self.pop2()?;
+                let mut x = Value::Null;
+                let mut y = Value::Null;
+                self.pop2_into(&mut x, &mut y)?;
                 self.push(y);
                 self.push(x);
             }
@@ -313,14 +336,16 @@ mod tests {
 
     use alloc::vec;
 
+    use crate::vm::Value;
+
     use super::{Operation, PrimOpKind, Process, error::VmResult};
 
     #[test]
     pub fn add() -> VmResult<()> {
         let prog = vec![
-            Operation::PushImm(PrimOpKind::I64, 1i64.into()),
-            Operation::PushImm(PrimOpKind::I64, 1i64.into()),
-            Operation::Add(PrimOpKind::I64),
+            Operation::PushImm(PrimOpKind::I32, 1i64.into()),
+            Operation::PushImm(PrimOpKind::I32, 1i64.into()),
+            Operation::Add(PrimOpKind::I32),
         ];
 
         let mut process = Process::new(Ipv6Addr::UNSPECIFIED).unwrap();
@@ -329,8 +354,10 @@ mod tests {
             process.run_op(i).unwrap();
         }
 
-        assert!(process.stack.len() == 1);
-        assert!(Process::as_num::<u64>(&process.pop()?)? == 2u64);
+        assert_eq!(process.stack.len(), 1);
+        let mut v = Value::Null;
+        process.pop_into(&mut v)?;
+        assert_eq!(Process::as_num::<i32>(&v)?, 2);
         Ok(())
     }
 }

@@ -75,6 +75,7 @@ impl AtomStore {
         let mut idx = this.mut_map();
         let idx: &mut IndexSet<&'static str, fnv::FnvBuildHasher> = idx.deref_mut();
 
+        // MEMSAFETY: This /will/ explode on OOM. FIXME!
         let (i, _) = idx.insert_full(s.to_string().leak());
 
         return Atom {

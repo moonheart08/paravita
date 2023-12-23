@@ -11,6 +11,7 @@ use core::{alloc::AllocError, ops::Deref};
 #[cfg(std)]
 use std::println;
 
+use alloc::vec::Vec;
 pub use atoms::*;
 use bytemuck::Pod;
 use num::{
@@ -29,7 +30,7 @@ static PROC_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub struct Process {
     pid: Ipv6Addr,
-    stack: tinyvec::TinyVec<[Value; 12]>,
+    stack: Vec<Value>,
 }
 
 impl Process {
@@ -43,19 +44,54 @@ impl Process {
         segs[4] = ((count >> 48) & 0xffff) as u16;
         Ok(Process {
             pid: segs.into(),
-            stack: TinyVec::new(),
+            stack: Vec::new(),
         })
     }
 
+    #[inline(never)]
     #[must_use]
     pub(super) fn pop(&mut self) -> VmResult<Value> {
         self.stack.pop().ok_or(VmError::StackUnderflow())
     }
 
+    
+    #[inline(never)]
+    #[must_use]
+    pub(super) fn pop_into(&mut self, into: &mut Value) -> VmResult<()> {
+        *into = self.stack.pop().ok_or(VmError::StackUnderflow())?;
+        Ok(())
+    }
+
+    #[inline(never)]
+    pub(super) unsafe fn pop_unchecked(&mut self) -> Value {
+        let len = self.stack.len()-1;
+        let v = core::mem::take(self.stack.get_unchecked_mut(len));
+        self.stack.set_len(len);
+        return v;
+    }
+
     #[must_use]
     pub(super) fn pop2(&mut self) -> VmResult<(Value, Value)> {
-        Ok((self.pop()?, self.pop()?))
+        if self.stack.len() < 2 {
+            return Err(VmError::StackUnderflow());
+        }
+
+        unsafe { Ok((self.pop_unchecked(), self.pop_unchecked())) }
     }
+
+    #[must_use]
+    pub(super) fn pop2_into(&mut self, x: &mut Value, y: &mut Value) -> VmResult<()> {
+        if self.stack.len() < 2 {
+            return Err(VmError::StackUnderflow());
+        }
+
+        unsafe {
+            *x = self.pop_unchecked();
+            *y = self.pop_unchecked();
+        }
+        Ok(())
+    }
+
 
     #[must_use]
     pub(super) fn pop3(&mut self) -> VmResult<(Value, Value, Value)> {
@@ -74,7 +110,9 @@ impl Process {
                     x.wrapping_add(&y)
                 }
 
-                let (x, y) = self.pop2()?;
+                let mut x = Value::Null;
+                let mut y = Value::Null;
+                self.pop2_into(&mut x, &mut y)?;
                 let v = match k {
                     PrimOpKind::U8 => add::<u8>(Self::as_num(&x)?, Self::as_num(&y)?).into(),
                     PrimOpKind::I8 => add::<i8>(Self::as_num(&x)?, Self::as_num(&y)?).into(),
@@ -93,16 +131,17 @@ impl Process {
                     x.wrapping_add(&y)
                 }
 
-                let x = self.pop()?;
+                let mut x = Value::Null;
+                self.pop_into(&mut x)?;
                 let v = match k {
-                    PrimOpKind::U8 => add::<u8>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::I8 => add::<i8>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::U16 => add::<u16>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::I16 => add::<i16>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::U32 => add::<u32>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::I32 => add::<i32>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::U64 => add::<u64>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::I64 => add::<i64>(Self::as_num(&x)?, imm.read()).into(),
+                    PrimOpKind::U8 => add::<u8>(Self::as_num(&x)?, imm.read_u8(k)).into(),
+                    PrimOpKind::I8 => add::<i8>(Self::as_num(&x)?, imm.read_i8(k)).into(),
+                    PrimOpKind::U16 => add::<u16>(Self::as_num(&x)?, imm.read_u16(k)).into(),
+                    PrimOpKind::I16 => add::<i16>(Self::as_num(&x)?, imm.read_i16(k)).into(),
+                    PrimOpKind::U32 => add::<u32>(Self::as_num(&x)?, imm.read_u32(k)).into(),
+                    PrimOpKind::I32 => add::<i32>(Self::as_num(&x)?, imm.read_i32(k)).into(),
+                    PrimOpKind::U64 => add::<u64>(Self::as_num(&x)?, imm.read_u64(k)).into(),
+                    PrimOpKind::I64 => add::<i64>(Self::as_num(&x)?, imm.read_i64(k)).into(),
                 };
 
                 self.push(v);
@@ -112,7 +151,9 @@ impl Process {
                     x.wrapping_sub(&y)
                 }
 
-                let (x, y) = self.pop2()?;
+                let mut x = Value::Null;
+                let mut y = Value::Null;
+                self.pop2_into(&mut x, &mut y)?;
                 let v = match k {
                     PrimOpKind::U8 => sub::<u8>(Self::as_num(&x)?, Self::as_num(&y)?).into(),
                     PrimOpKind::I8 => sub::<i8>(Self::as_num(&x)?, Self::as_num(&y)?).into(),
@@ -131,16 +172,17 @@ impl Process {
                     x.wrapping_sub(&y)
                 }
 
-                let x = self.pop()?;
+                let mut x = Value::Null;
+                self.pop_into(&mut x)?;
                 let v = match k {
-                    PrimOpKind::U8 => sub::<u8>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::I8 => sub::<i8>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::U16 => sub::<u16>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::I16 => sub::<i16>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::U32 => sub::<u32>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::I32 => sub::<i32>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::U64 => sub::<u64>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::I64 => sub::<i64>(Self::as_num(&x)?, imm.read()).into(),
+                    PrimOpKind::U8 => sub::<u8>(Self::as_num(&x)?, imm.read_u8(k)).into(),
+                    PrimOpKind::I8 => sub::<i8>(Self::as_num(&x)?, imm.read_i8(k)).into(),
+                    PrimOpKind::U16 => sub::<u16>(Self::as_num(&x)?, imm.read_u16(k)).into(),
+                    PrimOpKind::I16 => sub::<i16>(Self::as_num(&x)?, imm.read_i16(k)).into(),
+                    PrimOpKind::U32 => sub::<u32>(Self::as_num(&x)?, imm.read_u32(k)).into(),
+                    PrimOpKind::I32 => sub::<i32>(Self::as_num(&x)?, imm.read_i32(k)).into(),
+                    PrimOpKind::U64 => sub::<u64>(Self::as_num(&x)?, imm.read_u64(k)).into(),
+                    PrimOpKind::I64 => sub::<i64>(Self::as_num(&x)?, imm.read_i64(k)).into(),
                 };
 
                 self.push(v);
@@ -150,7 +192,9 @@ impl Process {
                     x.wrapping_mul(&y)
                 }
 
-                let (x, y) = self.pop2()?;
+                let mut x = Value::Null;
+                let mut y = Value::Null;
+                self.pop2_into(&mut x, &mut y)?;
                 let v = match k {
                     PrimOpKind::U8 => mul::<u8>(Self::as_num(&x)?, Self::as_num(&y)?).into(),
                     PrimOpKind::I8 => mul::<i8>(Self::as_num(&x)?, Self::as_num(&y)?).into(),
@@ -169,16 +213,17 @@ impl Process {
                     x.wrapping_mul(&y)
                 }
 
-                let x = self.pop()?;
+                let mut x = Value::Null;
+                self.pop_into(&mut x)?;
                 let v = match k {
-                    PrimOpKind::U8 => mul::<u8>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::I8 => mul::<i8>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::U16 => mul::<u16>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::I16 => mul::<i16>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::U32 => mul::<u32>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::I32 => mul::<i32>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::U64 => mul::<u64>(Self::as_num(&x)?, imm.read()).into(),
-                    PrimOpKind::I64 => mul::<i64>(Self::as_num(&x)?, imm.read()).into(),
+                    PrimOpKind::U8 => mul::<u8>(Self::as_num(&x)?, imm.read_u8(k)).into(),
+                    PrimOpKind::I8 => mul::<i8>(Self::as_num(&x)?, imm.read_i8(k)).into(),
+                    PrimOpKind::U16 => mul::<u16>(Self::as_num(&x)?, imm.read_u16(k)).into(),
+                    PrimOpKind::I16 => mul::<i16>(Self::as_num(&x)?, imm.read_i16(k)).into(),
+                    PrimOpKind::U32 => mul::<u32>(Self::as_num(&x)?, imm.read_u32(k)).into(),
+                    PrimOpKind::I32 => mul::<i32>(Self::as_num(&x)?, imm.read_i32(k)).into(),
+                    PrimOpKind::U64 => mul::<u64>(Self::as_num(&x)?, imm.read_u64(k)).into(),
+                    PrimOpKind::I64 => mul::<i64>(Self::as_num(&x)?, imm.read_i64(k)).into(),
                 };
 
                 self.push(v);
@@ -187,10 +232,12 @@ impl Process {
             Operation::DivImm(_k, _imm) => todo!(),
             Operation::PushImm(k, v) => self.push(Value::Int(k, v.as_aligned())),
             Operation::PushAtom(a) => self.push(Value::Object(PVObject::from(a))),
-            Operation::MakeObject(_) => self.push(Value::Object(PVObject::make_map())),
-            Operation::MakeArray => self.push(Value::Object(PVObject::make_array())),
+            Operation::MakeObject(_) => self.push(Value::Object(PVObject::make_map()?)),
+            Operation::MakeArray => self.push(Value::Object(PVObject::make_array()?)),
             Operation::IndexArray => {
-                let (arr, idx) = self.pop2()?;
+                let mut arr = Value::Null;
+                let mut idx = Value::Null;
+                self.pop2_into(&mut arr, &mut idx)?;
                 let idx = Self::as_num::<usize>(&idx)?;
                 let arr = Self::as_list(&arr)?;
                 self.push(arr.deref().load(idx).unwrap_or(Value::Null));
@@ -202,11 +249,13 @@ impl Process {
                 arr.deref_mut().store(idx, value)?;
             }
             Operation::Drop => {
-                let _ = self.pop();
+                core::mem::drop(self.pop());
             }
             Operation::Dup => {
-                let v = self.pop()?;
-                self.push(v)
+                let mut x = Value::Null;
+                self.pop_into(&mut x)?;
+                self.push(x.clone());
+                self.push(x)
             }
             Operation::Swap => {
                 let (x, y) = self.pop2()?;
@@ -231,7 +280,7 @@ impl Process {
         if let Value::Int(_, _) = v {
             Ok(v.reinterpret())
         } else {
-            Err(error::VmError::PopExpectedType(TypeId::of::<T>()))
+            Err(error::VmError::PopExpectedType())
         }
     }
 
@@ -264,10 +313,10 @@ mod tests {
 
     use alloc::vec;
 
-    use super::{Operation, PrimOpKind, Process};
+    use super::{Operation, PrimOpKind, Process, error::VmResult};
 
     #[test]
-    pub fn add() {
+    pub fn add() -> VmResult<()> {
         let prog = vec![
             Operation::PushImm(PrimOpKind::I64, 1i64.into()),
             Operation::PushImm(PrimOpKind::I64, 1i64.into()),
@@ -281,6 +330,7 @@ mod tests {
         }
 
         assert!(process.stack.len() == 1);
-        assert!(process.pop().unwrap().reinterpret::<i64>() == 2);
+        assert!(Process::as_num::<u64>(&process.pop()?)? == 2u64);
+        Ok(())
     }
 }

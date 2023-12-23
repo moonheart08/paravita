@@ -1,4 +1,4 @@
-use core::fmt::Debug;
+use core::{fmt::Debug, mem::{size_of, align_of, MaybeUninit}, any::TypeId};
 
 use bytemuck::Pod;
 use bytemuck_derive::{Pod, Zeroable};
@@ -15,25 +15,32 @@ pub enum Value {
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(C, align(8))]
 #[derive(Pod, Zeroable)]
-pub struct Aligned(pub [u8; 8]);
+pub struct Aligned(pub u64);
 
 impl Value {
     pub fn reinterpret<T: Pod>(&self) -> T {
+        if (size_of::<T>() > size_of::<Aligned>()) || (align_of::<T>() > align_of::<Aligned>()) { panic!("Tried to read a value too large or improperly aligned to be contained in Value! {:?}", TypeId::of::<T>())}
         match self {
             Value::Int(_, v) => {
-                let s = bytemuck::cast_ref::<Aligned, [u8; 8]>(v).as_slice();
-                bytemuck::cast_slice(s)[0]
+                let ptr = v as *const Aligned as *const T;
+                return unsafe { ptr.read() }
             }
-            Value::Object(_) => unimplemented!(), // hbdxjwhsgcvyexwhuxwh no
+            Value::Object(_) => T::zeroed(), // hbdxjwhsgcvyexwhuxwh no
             Value::Null => T::zeroed(),
         }
     }
 
     pub fn from<T: Pod>(v: T, k: PrimOpKind) -> Value {
-        let b = bytemuck::bytes_of(&v);
-        let mut dest = [0u8; 8];
-        dest.copy_from_slice(b);
-        return Value::Int(k, Aligned(dest));
+        if (size_of::<T>() > size_of::<Aligned>()) || (align_of::<T>() > align_of::<Aligned>()) { panic!("Tried to create a value too large or improperly aligned to be contained in Value! {:?}", TypeId::of::<T>())}
+
+        let mut a = MaybeUninit::uninit();
+        let ptr = a.as_mut_ptr() as *mut T;
+        //SAFETY: Guaranteed to fit.
+        unsafe {
+            ptr.write(v);
+        }
+        //SAFETY: Minor UB, may leak parts of stack. But safe as far as I'm concerned :^)
+        return Value::Int(k, unsafe { a.assume_init() });
     }
 }
 
@@ -88,5 +95,14 @@ impl From<u8> for Value {
 impl From<i8> for Value {
     fn from(value: i8) -> Self {
         Value::from(value, PrimOpKind::I8)
+    }
+}
+
+
+impl Drop for Value {
+    // this is massive when inlined, don't. llvm ur stinky
+    #[inline(never)]
+    fn drop(&mut self) {
+        let _ = self;
     }
 }

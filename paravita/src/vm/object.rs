@@ -35,24 +35,28 @@ impl PVObject {
         self.cell.borrow_mut()
     }
 
-    fn build_handle(h: PVObjectType) -> Self {
-        Self {
-            cell: Rc::new(RefCell::new(h)),
-        }
+    fn build_handle(h: PVObjectType) -> VmResult<Self> {
+        Ok(Self {
+            
+            cell: Rc::try_new(RefCell::new(h))?,
+        })
     }
 
-    pub fn make_map() -> Self {
+    pub fn make_map() -> VmResult<Self> {
+        //MEMSAFETY: IndexMap default is infalliable.
         let inner = PVObjectType::Map(IndexMap::default());
         Self::build_handle(inner)
     }
 
-    pub fn make_array() -> Self {
-        let inner = PVObjectType::Array(Vec::default());
+    pub fn make_array() -> VmResult<Self> {
+        //MEMSAFETY: Vec::new() is infalliable.
+        let inner = PVObjectType::Array(Vec::new());
         Self::build_handle(inner)
     }
 
-    pub fn duplicate(&self) -> Self {
+    pub fn duplicate(&self) -> VmResult<Self> {
         // Clone the interior object
+        //MEMSAFETY: We need a better API for this, clone is falliable by panic.
         let inner = (*self.cell.borrow().deref()).clone();
         // and construct a handle to the clone.
         Self::build_handle(inner)

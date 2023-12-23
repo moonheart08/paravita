@@ -1,4 +1,4 @@
-use core::mem::variant_count;
+use core::mem::{variant_count, size_of, MaybeUninit};
 
 use bytemuck::{self, Pod};
 
@@ -65,61 +65,59 @@ impl Operation {
 }
 
 #[repr(transparent)]
-pub struct IntOpImmediate([u8; 8]);
+pub struct IntOpImmediate(u64);
 
 impl IntOpImmediate {
     pub fn read_u8(&self, kind: PrimOpKind) -> u8 {
-        assert!(kind == PrimOpKind::U8);
-        self.read()
+        debug_assert!(kind == PrimOpKind::U8);
+        let ptr = &self.0 as *const u64 as *const u8;
+        u8::from_le(unsafe { ptr.read() })
     }
 
     pub fn read_i8(&self, kind: PrimOpKind) -> i8 {
-        assert!(kind == PrimOpKind::I8);
-        self.read()
+        debug_assert!(kind == PrimOpKind::I8);
+        let ptr = &self.0 as *const u64 as *const i8;
+        i8::from_le(unsafe { ptr.read() })
     }
 
     pub fn read_u16(&self, kind: PrimOpKind) -> u16 {
-        assert!(kind == PrimOpKind::U16);
-        self.read()
+        debug_assert!(kind == PrimOpKind::U16);
+        let ptr = &self.0 as *const u64 as *const u16;
+        u16::from_le(unsafe { ptr.read() })
     }
 
     pub fn read_i16(&self, kind: PrimOpKind) -> i16 {
-        assert!(kind == PrimOpKind::I16);
-        self.read()
+        debug_assert!(kind == PrimOpKind::I16);
+        let ptr = &self.0 as *const u64 as *const i16;
+        i16::from_le(unsafe { ptr.read() })
     }
 
     pub fn read_u32(&self, kind: PrimOpKind) -> u32 {
-        assert!(kind == PrimOpKind::U32);
-        self.read()
+        debug_assert!(kind == PrimOpKind::U32);
+        let ptr = &self.0 as *const u64 as *const u32;
+        u32::from_le(unsafe { ptr.read() })
     }
 
     pub fn read_i32(&self, kind: PrimOpKind) -> i32 {
-        assert!(kind == PrimOpKind::I32);
-        self.read()
+        debug_assert!(kind == PrimOpKind::I32);
+        let ptr = &self.0 as *const u64 as *const i32;
+        i32::from_le(unsafe { ptr.read() })
     }
 
     pub fn read_u64(&self, kind: PrimOpKind) -> u64 {
-        assert!(kind == PrimOpKind::U64);
-        self.read()
+        debug_assert!(kind == PrimOpKind::U64);
+        let ptr = &self.0 as *const u64;
+        u64::from_le(unsafe { ptr.read() })
     }
 
     pub fn read_i64(&self, kind: PrimOpKind) -> i64 {
-        assert!(kind == PrimOpKind::I64);
-        self.read()
-    }
-
-    pub fn read<N>(&self) -> N
-    where
-        N: bytemuck::Pod,
-        [u8; core::mem::size_of::<N>()]: bytemuck::Pod,
-    {
-        bytemuck::cast::<[u8; core::mem::size_of::<N>()], N>(Self::slice_as_array(
-            &self.0[0..core::mem::size_of::<u16>()],
-        ))
+        debug_assert!(kind == PrimOpKind::I64);
+        let ptr = &self.0 as *const u64 as *const i64;
+        i64::from_le(unsafe { ptr.read() })
     }
 
     pub fn as_aligned(&self) -> Aligned {
-        Aligned(self.0)
+        Aligned(bytemuck::cast(self.0.clone()))
     }
 
     fn slice_as_array<const N: usize>(s: &[u8]) -> [u8; N] {
@@ -132,10 +130,13 @@ where
     T: Pod,
 {
     fn from(value: T) -> Self {
-        let mut dest = [0u8; 8];
-        let s = bytemuck::bytes_of(&value);
-        dest.copy_from_slice(s);
-        return IntOpImmediate(dest);
+        let mut a = MaybeUninit::uninit();
+        let ptr = a.as_mut_ptr() as *mut T;
+        //SAFETY: Guaranteed to fit.
+        unsafe {
+            ptr.write(value);
+        }
+        return IntOpImmediate(unsafe { a.assume_init() });
     }
 }
 

@@ -6,8 +6,8 @@
 #![feature(error_in_core)]
 #![no_std]
 
+extern crate alloc;
 #[cfg(std)]
 extern crate std;
-extern crate alloc;
 
 pub mod vm;

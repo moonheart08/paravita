@@ -2,7 +2,7 @@ use core::mem::variant_count;
 
 use bytemuck::{self, Pod};
 
-use super::{Atom, Aligned};
+use super::{Aligned, Atom};
 
 #[repr(u8)]
 #[non_exhaustive]
@@ -64,7 +64,6 @@ impl Operation {
     }
 }
 
-
 #[repr(transparent)]
 pub struct IntOpImmediate([u8; 8]);
 
@@ -109,10 +108,14 @@ impl IntOpImmediate {
         self.read()
     }
 
-    pub fn read<N>(&self) -> N 
-        where N: bytemuck::Pod, [u8; core::mem::size_of::<N>()]: bytemuck::Pod
+    pub fn read<N>(&self) -> N
+    where
+        N: bytemuck::Pod,
+        [u8; core::mem::size_of::<N>()]: bytemuck::Pod,
     {
-        bytemuck::cast::<[u8; core::mem::size_of::<N>()], N>(Self::slice_as_array(&self.0[0..core::mem::size_of::<u16>()]))
+        bytemuck::cast::<[u8; core::mem::size_of::<N>()], N>(Self::slice_as_array(
+            &self.0[0..core::mem::size_of::<u16>()],
+        ))
     }
 
     pub fn as_aligned(&self) -> Aligned {
@@ -125,7 +128,8 @@ impl IntOpImmediate {
 }
 
 impl<T> From<T> for IntOpImmediate
-    where T: Pod 
+where
+    T: Pod,
 {
     fn from(value: T) -> Self {
         let mut dest = [0u8; 8];
@@ -145,5 +149,5 @@ pub enum PrimOpKind {
     U32,
     I32,
     U64,
-    I64
+    I64,
 }

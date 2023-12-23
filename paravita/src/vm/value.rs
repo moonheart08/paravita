@@ -1,6 +1,5 @@
 use core::fmt::Debug;
 
-
 use bytemuck::Pod;
 use bytemuck_derive::{Pod, Zeroable};
 
@@ -10,7 +9,7 @@ use super::{PVObject, PrimOpKind};
 pub enum Value {
     Int(PrimOpKind, Aligned), // Due to both BE and LE platforms, and non-64bit using this type, just upcasting to u64 isn't acceptable as it'd imply the need to extend or sign extend all numeric values.
     Object(PVObject),
-    Null
+    Null,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -24,7 +23,7 @@ impl Value {
             Value::Int(_, v) => {
                 let s = bytemuck::cast_ref::<Aligned, [u8; 8]>(v).as_slice();
                 bytemuck::cast_slice(s)[0]
-            },
+            }
             Value::Object(_) => unimplemented!(), // hbdxjwhsgcvyexwhuxwh no
             Value::Null => T::zeroed(),
         }

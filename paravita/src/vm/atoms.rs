@@ -1,10 +1,13 @@
 use alloc::{boxed::Box, string::ToString};
 use async_lock::*;
 use bytemuck::Contiguous;
+use core::hash::Hash;
+use core::{
+    num::NonZeroU32,
+    ops::{Deref, DerefMut},
+};
 use indexmap::IndexSet;
 use once_cell::race::OnceBox;
-use core::{ops::{Deref, DerefMut}, num::NonZeroU32};
-use core::hash::Hash;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Atom {
@@ -27,13 +30,13 @@ impl From<&str> for Atom {
 
 struct AtomStore {
     // SAFETY: DO NOT REMOVE ATOMS FROM THE SET. Shit explodes!
-    atoms: RwLock<IndexSet<&'static str, fnv::FnvBuildHasher>>
+    atoms: RwLock<IndexSet<&'static str, fnv::FnvBuildHasher>>,
 }
 
 unsafe impl Sync for AtomStore {}
 
 impl AtomStore {
-    fn map(&self) ->  RwLockReadGuard<'_, IndexSet<&'static str, fnv::FnvBuildHasher>> {
+    fn map(&self) -> RwLockReadGuard<'_, IndexSet<&'static str, fnv::FnvBuildHasher>> {
         let idx = loop {
             if let Some(x) = self.atoms.try_read() {
                 break x;
@@ -61,7 +64,9 @@ impl AtomStore {
             // rust analyzer is all kinds of sad about RwLock for some reason so this is here so it chokes less.
             let idx: &IndexSet<&'static str, fnv::FnvBuildHasher> = idx.deref();
             if let Some(i) = idx.get_index_of(s) {
-                return Atom { handle: unsafe { NonZeroU32::new_unchecked(i as u32 + 1) } }
+                return Atom {
+                    handle: unsafe { NonZeroU32::new_unchecked(i as u32 + 1) },
+                };
             }
 
             // MAP LOCK DROPPED HERE
@@ -72,7 +77,9 @@ impl AtomStore {
 
         let (i, _) = idx.insert_full(s.to_string().leak());
 
-        return Atom { handle: unsafe { NonZeroU32::new_unchecked(i as u32 + 1) } };
+        return Atom {
+            handle: unsafe { NonZeroU32::new_unchecked(i as u32 + 1) },
+        };
     }
 
     fn get<'a>() -> &'a Self {
@@ -81,7 +88,9 @@ impl AtomStore {
 
     fn init() -> Box<AtomStore> {
         Box::new({
-            AtomStore { atoms: RwLock::new(IndexSet::with_hasher(fnv::FnvBuildHasher::default())) }
+            AtomStore {
+                atoms: RwLock::new(IndexSet::with_hasher(fnv::FnvBuildHasher::default())),
+            }
         })
     }
 
@@ -105,7 +114,7 @@ impl Hash for Atom {
 
 #[cfg(test)]
 mod tests {
-    use super::{Atom, atoms_count};
+    use super::{atoms_count, Atom};
 
     #[test]
     pub fn insert_get() {

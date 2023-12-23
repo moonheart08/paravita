@@ -1,21 +1,29 @@
-use core::{cell::{RefCell, Ref, RefMut}, ops::Deref, any::Any, fmt::Debug};
+use core::{
+    any::Any,
+    cell::{Ref, RefCell, RefMut},
+    fmt::Debug,
+    ops::Deref,
+};
 
-use alloc::{string::String, vec::Vec, rc::Rc};
+use alloc::{rc::Rc, string::String, vec::Vec};
 use fnv::FnvBuildHasher;
 use indexmap::IndexMap;
 
-use super::{Atom, Value, error::{VmError, VmResult}};
+use super::{
+    error::{VmError, VmResult},
+    Atom, Value,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum PVString {
     Atom(Atom),
-    Str(String)
+    Str(String),
 }
 
 /// A reference to a Paravita object. To clone the inner object, call [duplicate()]
 #[derive(Debug, PartialEq, Clone)]
 pub struct PVObject {
-    cell: Rc<RefCell<PVObjectType>>
+    cell: Rc<RefCell<PVObjectType>>,
 }
 
 impl PVObject {
@@ -28,7 +36,9 @@ impl PVObject {
     }
 
     fn build_handle(h: PVObjectType) -> Self {
-        Self { cell: Rc::new(RefCell::new(h)) }
+        Self {
+            cell: Rc::new(RefCell::new(h)),
+        }
     }
 
     pub fn make_map() -> Self {
@@ -54,7 +64,7 @@ pub enum PVObjectType {
     Map(IndexMap<PVString, Value, FnvBuildHasher>),
     Array(Vec<Value>),
     String(PVString),
-    UserData(Rc<dyn PVUserData>)
+    UserData(Rc<dyn PVUserData>),
 }
 impl PartialEq for PVObjectType {
     fn eq(&self, other: &Self) -> bool {
@@ -62,7 +72,8 @@ impl PartialEq for PVObjectType {
             (Self::Map(l0), Self::Map(r0)) => l0 == r0,
             (Self::Array(l0), Self::Array(r0)) => l0 == r0,
             (Self::String(l0), Self::String(r0)) => l0 == r0,
-            (Self::UserData(_), Self::UserData(_)) => false /* never equal. */,
+            /* never equal. */
+            (Self::UserData(_), Self::UserData(_)) => false,
             _ => false,
         }
     }
@@ -73,9 +84,7 @@ impl PVObjectType {
         match self {
             PVObjectType::Map(_) => None,
             PVObjectType::String(_) => None,
-            PVObjectType::Array(v) => {
-                v.get(idx).map(|x| x.clone())
-            },
+            PVObjectType::Array(v) => v.get(idx).map(|x| x.clone()),
             PVObjectType::UserData(_) => None,
         }
     }
@@ -92,7 +101,7 @@ impl PVObjectType {
                 }
                 v[idx] = value;
                 Ok(())
-            },
+            }
             PVObjectType::UserData(_) => Ok(()),
         }
     }
@@ -100,7 +109,9 @@ impl PVObjectType {
 
 impl From<Atom> for PVObject {
     fn from(value: Atom) -> Self {
-        Self { cell: Rc::new(RefCell::new(PVObjectType::String(PVString::Atom(value)))) }
+        Self {
+            cell: Rc::new(RefCell::new(PVObjectType::String(PVString::Atom(value)))),
+        }
     }
 }
 

@@ -1,4 +1,8 @@
-use core::{error::Error, fmt::{Debug, Display}, any::TypeId};
+use core::{
+    any::TypeId,
+    error::Error,
+    fmt::{Debug, Display},
+};
 
 use alloc::collections::TryReserveError;
 
@@ -17,7 +21,7 @@ impl Error for VmError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             VmError::MemoryReserveFailed(e) => Some(e),
-            _ => None
+            _ => None,
         }
     }
 
@@ -46,8 +50,7 @@ impl Debug for VmError {
             VmError::PopExpectedObject() => write!(f, "VM expected object on pop."),
             VmError::PopExpectedArray() => write!(f, "VM expected array on pop."),
             VmError::PopExpectedUserData(ty) => write!(f, "VM expected userdata {ty:?} on pop."),
-            VmError::MemoryReserveFailed(e) =>  write!(f, "{e:?}"),
-            
+            VmError::MemoryReserveFailed(e) => write!(f, "{e:?}"),
         }
     }
 }

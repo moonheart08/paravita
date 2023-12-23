@@ -1,27 +1,29 @@
-mod value;
 mod atoms;
-mod opcodes;
-mod object;
 mod error;
+mod object;
+mod opcodes;
+mod value;
 use core::any::TypeId;
 use core::cell::{Ref, RefMut};
+use core::net::Ipv6Addr;
 use core::ops::DerefMut;
 use core::{alloc::AllocError, ops::Deref};
-use core::net::Ipv6Addr;
 #[cfg(std)]
 use std::println;
 
-
+pub use atoms::*;
 use bytemuck::Pod;
+use num::{
+    traits::{WrappingAdd, WrappingMul, WrappingSub},
+    FromPrimitive, Integer,
+};
+pub use object::*;
+pub use opcodes::*;
 use portable_atomic::AtomicU64;
 use tinyvec::TinyVec;
-use num::{traits::{WrappingAdd, WrappingSub, WrappingMul}, Integer, FromPrimitive};
 pub use value::*;
-pub use opcodes::*;
-pub use atoms::*;
-pub use object::*;
 
-use self::error::{VmResult, VmError};
+use self::error::{VmError, VmResult};
 
 static PROC_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -39,14 +41,17 @@ impl Process {
         segs[6] = ((count >> 16) & 0xffff) as u16;
         segs[5] = ((count >> 32) & 0xffff) as u16;
         segs[4] = ((count >> 48) & 0xffff) as u16;
-        Ok(Process { pid: segs.into(), stack: TinyVec::new() })
+        Ok(Process {
+            pid: segs.into(),
+            stack: TinyVec::new(),
+        })
     }
 
     #[must_use]
     pub(super) fn pop(&mut self) -> VmResult<Value> {
         self.stack.pop().ok_or(VmError::StackUnderflow())
     }
-    
+
     #[must_use]
     pub(super) fn pop2(&mut self) -> VmResult<(Value, Value)> {
         Ok((self.pop()?, self.pop()?))
@@ -68,7 +73,7 @@ impl Process {
                 fn add<T: WrappingAdd>(x: T, y: T) -> T {
                     x.wrapping_add(&y)
                 }
-                
+
                 let (x, y) = self.pop2()?;
                 {
                     let v = match k {
@@ -84,12 +89,12 @@ impl Process {
 
                     self.push(v);
                 }
-            },
+            }
             Operation::AddImm(k, imm) => {
                 fn add<T: WrappingAdd>(x: T, y: T) -> T {
                     x.wrapping_add(&y)
                 }
-                
+
                 let x = self.pop()?;
                 {
                     let v = match k {
@@ -105,12 +110,12 @@ impl Process {
 
                     self.push(v);
                 }
-            },
+            }
             Operation::Sub(k) => {
                 fn sub<T: WrappingSub>(x: T, y: T) -> T {
                     x.wrapping_sub(&y)
                 }
-                
+
                 let (x, y) = self.pop2()?;
                 {
                     let v = match k {
@@ -126,12 +131,12 @@ impl Process {
 
                     self.push(v);
                 }
-            },
+            }
             Operation::SubImm(k, imm) => {
                 fn sub<T: WrappingSub>(x: T, y: T) -> T {
                     x.wrapping_sub(&y)
                 }
-                
+
                 let x = self.pop()?;
                 {
                     let v = match k {
@@ -147,12 +152,12 @@ impl Process {
 
                     self.push(v);
                 }
-            },
+            }
             Operation::Mul(k) => {
                 fn mul<T: WrappingMul>(x: T, y: T) -> T {
                     x.wrapping_mul(&y)
                 }
-                
+
                 let (x, y) = self.pop2()?;
                 {
                     let v = match k {
@@ -168,12 +173,12 @@ impl Process {
 
                     self.push(v);
                 }
-            },
+            }
             Operation::MulImm(k, imm) => {
                 fn mul<T: WrappingMul>(x: T, y: T) -> T {
                     x.wrapping_mul(&y)
                 }
-                
+
                 let x = self.pop()?;
                 {
                     let v = match k {
@@ -189,7 +194,7 @@ impl Process {
 
                     self.push(v);
                 }
-            },
+            }
             Operation::Div(_k) => todo!(),
             Operation::DivImm(_k, _imm) => todo!(),
             Operation::PushImm(k, v) => self.push(Value::Int(k, v.as_aligned())),
@@ -203,7 +208,7 @@ impl Process {
                     let arr = Self::as_list(&arr)?;
                     self.push(arr.deref().load(idx).unwrap_or(Value::Null));
                 }
-            },
+            }
             Operation::SetArray => {
                 let (arr, idx, value) = self.pop3()?;
                 {
@@ -211,12 +216,14 @@ impl Process {
                     let mut arr = Self::as_list_mut(&arr)?;
                     arr.deref_mut().store(idx, value)?;
                 }
-            },
-            Operation::Drop => { let _ = self.pop(); },
+            }
+            Operation::Drop => {
+                let _ = self.pop();
+            }
             Operation::Dup => {
                 let v = self.pop()?;
                 self.push(v)
-            },
+            }
             Operation::Swap => {
                 let (x, y) = self.pop2()?;
                 {
@@ -229,15 +236,15 @@ impl Process {
                 {
                     println!("{:?}", self.pop());
                 }
-            },
+            }
             Operation::__Final => todo!(),
-            
         }
         Ok(())
     }
 
     fn as_num<T>(v: &Value) -> VmResult<T>
-        where T: Integer + Pod + FromPrimitive
+    where
+        T: Integer + Pod + FromPrimitive,
     {
         if let Value::Int(_, _) = v {
             Ok(v.reinterpret())
@@ -282,7 +289,7 @@ mod tests {
         let prog = vec![
             Operation::PushImm(PrimOpKind::I64, 1i64.into()),
             Operation::PushImm(PrimOpKind::I64, 1i64.into()),
-            Operation::Add(PrimOpKind::I64)
+            Operation::Add(PrimOpKind::I64),
         ];
 
         let mut process = Process::new(Ipv6Addr::UNSPECIFIED).unwrap();

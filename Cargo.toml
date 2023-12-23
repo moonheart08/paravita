@@ -1,0 +1,15 @@
+[package]
+name = "paravita_orchestra"
+version = "0.0.0"
+
+[workspace]
+members = ["kernel", "paravita"]
+resolver = "2"
+edition = "2024"
+
+[build-dependencies]
+kernel = { path = "kernel", artifact = "bin", target = "x86_64-unknown-none" }
+
+[dependencies]
+bootloader = "0.11.4"
+bytemuck = "1.14.0"
